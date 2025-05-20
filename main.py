@@ -13,7 +13,9 @@ try:
         from luma.lcd.device import st7735
         from PIL import Image
         USE_SPI_DISPLAY = True
-except Exception:
+        print("SPI display mode enabled")  # Add this line
+except Exception as e:
+    print("SPI display import failed:", e)
     USE_SPI_DISPLAY = False
 
 # --- API Key Handling ---
