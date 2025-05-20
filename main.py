@@ -1,9 +1,48 @@
 import pygame
 import requests
 import time
+import os
+import csv
 
-API_KEY = 'cu58a99r01qqj8u5v9j0cu58a99r01qqj8u5v9jg'  # My API Key for Finnhub
-STOCK_SYMBOLS = ['AMPX', 'VOO', 'JPM']  # List of stock symbols
+# --- API Key Handling ---
+def get_api_key():
+    api_key = os.environ.get('FINNHUB_API_KEY')
+    if api_key:
+        return api_key
+
+    # Try to load from .env file
+    env_path = '.env'
+    if os.path.exists(env_path):
+        with open(env_path, 'r') as f:
+            for line in f:
+                if line.startswith('FINNHUB_API_KEY='):
+                    return line.strip().split('=', 1)[1]
+
+    # Prompt user and save to .env
+    api_key = input("Enter your Finnhub API key: ").strip()
+    with open(env_path, 'w') as f:
+        f.write(f'FINNHUB_API_KEY={api_key}\n')
+    return api_key
+
+API_KEY = get_api_key()
+
+# --- Stock Symbols Handling ---
+def load_stock_symbols(filename='stocks.csv'):
+    symbols = []
+    try:
+        with open(filename, newline='') as csvfile:
+            reader = csv.reader(csvfile)
+            for row in reader:
+                if row and row[0].strip():
+                    symbols.append(row[0].strip().upper())
+    except FileNotFoundError:
+        raise RuntimeError(f"{filename} not found. Please create it with one stock symbol per line.")
+    if not symbols:
+        raise RuntimeError(f"{filename} is empty. Please add at least one stock symbol.")
+    return symbols
+
+STOCK_SYMBOLS = load_stock_symbols()
+
 DISPLAY_SIZE = (128, 128)  # Display resolution
 REFRESH_INTERVAL = 5  # 5 seconds
 MARKET_CHECK_INTERVAL = 300  # 5 minutes
@@ -56,17 +95,27 @@ def render_text_left(surface, text, font, x, y, color, max_width):
 def fade_transition(screen, old_surface, new_surface, duration=1):
     clock = pygame.time.Clock()
     overlay = pygame.Surface(screen.get_size())
-    overlay.fill((255, 255, 255))  # White overlay
-    alpha_step = 255 // (duration * 30)
+    overlay.fill((13, 17, 23))  # Dark overlay for dark mode
+    alpha_step = max(1, 255 // (duration * 30))
 
+    # Fade out old surface
     for alpha in range(0, 256, alpha_step):
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                exit()
         screen.blit(old_surface, (0, 0))
         overlay.set_alpha(alpha)
         screen.blit(overlay, (0, 0))
         pygame.display.flip()
         clock.tick(30)
 
+    # Fade in new surface
     for alpha in range(255, -1, -alpha_step):
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                exit()
         screen.blit(new_surface, (0, 0))
         overlay.set_alpha(alpha)
         screen.blit(overlay, (0, 0))
@@ -75,29 +124,34 @@ def fade_transition(screen, old_surface, new_surface, duration=1):
 
 # Initialize Pygame
 pygame.init()
-screen = pygame.display.set_mode(DISPLAY_SIZE)  # Set the resolution
+screen = pygame.display.set_mode(DISPLAY_SIZE)
 pygame.display.set_caption('Stock Tracker')
 clock = pygame.time.Clock()
 
 # Fonts
 try:
-    font_large = pygame.font.SysFont('Helvetica', 20, bold=True)  # Large font for the symbol
-    font_medium = pygame.font.SysFont('Helvetica', 18)  # Medium font for the price
-    font_small = pygame.font.SysFont('Helvetica', 14)  # Small font for the change info
+    font_large = pygame.font.SysFont('Helvetica', 20, bold=True)
+    font_medium = pygame.font.SysFont('Helvetica', 18)
+    font_small = pygame.font.SysFont('Helvetica', 14)
 except:
-    # Fallback in case Helvetica is not available
     font_large = pygame.font.SysFont('Arial', 20, bold=True)
     font_medium = pygame.font.SysFont('Arial', 18)
     font_small = pygame.font.SysFont('Arial', 14)
 
-# Colors
-WHITE = (255, 255, 255)
-BLACK = (0, 0, 0)
+# Colors (GitHub dark mode palette)
+BG_COLOR = (13, 17, 23)         # #0d1117
+FG_COLOR = (201, 209, 217)      # #c9d1d9
 GREEN = (19, 127, 54)
 RED = (219, 44, 39)
-YELLOW = (218, 165, 32)
+YELLOW = (227, 179, 65)         # #e3b341
 
-# Initial setup
+# --- Show loading screen immediately ---
+screen.fill(BG_COLOR)
+loading_surface = font_large.render("Loading...", True, FG_COLOR)
+screen.blit(loading_surface, (20, 54))
+pygame.display.flip()
+
+# Now do the blocking API calls
 current_stock_index = 0
 market_open = is_market_open()
 stock_data = get_stock_data(STOCK_SYMBOLS[current_stock_index])
@@ -108,7 +162,7 @@ last_switch_time = time.time()
 # Function to render the stock screen
 def create_stock_surface(symbol, stock_data):
     surface = pygame.Surface(DISPLAY_SIZE)
-    surface.fill(WHITE)
+    surface.fill(BG_COLOR)
 
     # Determine price change arrow, polarity, and color
     if stock_data['change'] > 0:
@@ -121,14 +175,14 @@ def create_stock_surface(symbol, stock_data):
         change_color = RED
 
     # Render the stock symbol on the top left
-    symbol_surface = font_large.render(symbol, True, BLACK)
+    symbol_surface = font_large.render(symbol, True, FG_COLOR)
     surface.blit(symbol_surface, (5, 10))
 
     # Render "MC" on the top right if the market is closed
     if not market_open:
         mc_surface = font_large.render("MC", True, YELLOW)
-        mc_x = DISPLAY_SIZE[0] - mc_surface.get_width() - 5  # Align to the right
-        mc_y = 10  # Same vertical alignment as the symbol
+        mc_x = DISPLAY_SIZE[0] - mc_surface.get_width() - 5
+        mc_y = 10
         surface.blit(mc_surface, (mc_x, mc_y))
 
     # Render the stock data (price, change, percent change)
