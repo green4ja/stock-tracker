@@ -5,6 +5,17 @@ import os
 import csv
 import platform
 
+# --- SPI Display Support ---
+USE_SPI_DISPLAY = False
+try:
+    if platform.system() == "Linux" and os.uname().machine.startswith("arm"):
+        from luma.core.interface.serial import spi
+        from luma.lcd.device import st7735
+        from PIL import Image
+        USE_SPI_DISPLAY = True
+except Exception:
+    USE_SPI_DISPLAY = False
+
 # --- API Key Handling ---
 def get_api_key():
     api_key = os.environ.get('FINNHUB_API_KEY')
@@ -126,13 +137,26 @@ def fade_transition(screen, old_surface, new_surface, duration=1):
 # Initialize Pygame
 pygame.init()
 
-# Detect OS and set display mode
-if platform.system() == "Linux":
-    screen = pygame.display.set_mode(DISPLAY_SIZE, pygame.FULLSCREEN)
+if USE_SPI_DISPLAY:
+    # Setup SPI display for ST7735 (adjust pins if needed)
+    serial = spi(
+        port=0,
+        device=0,
+        gpio_DC=25,   # Pin 22 (GPIO 25)
+        gpio_RST=27,  # Pin 13 (GPIO 27)
+        gpio_CS=8     # Pin 24 (CE0, GPIO 8)
+    )
+    device = st7735(serial, width=128, height=128, rotate=0, bgr=True)
+    # Use a pygame Surface for drawing, not a window
+    screen = pygame.Surface(DISPLAY_SIZE)
 else:
-    screen = pygame.display.set_mode(DISPLAY_SIZE)
+    # Normal Pygame window for debugging
+    if platform.system() == "Linux":
+        screen = pygame.display.set_mode(DISPLAY_SIZE, pygame.FULLSCREEN)
+    else:
+        screen = pygame.display.set_mode(DISPLAY_SIZE)
+    pygame.display.set_caption('Stock Tracker')
 
-pygame.display.set_caption('Stock Tracker')
 clock = pygame.time.Clock()
 
 # Fonts
@@ -153,10 +177,17 @@ RED = (219, 44, 39)
 YELLOW = (227, 179, 65)         # #e3b341
 
 # --- Show loading screen immediately ---
-screen.fill(BG_COLOR)
-loading_surface = font_large.render("Loading...", True, FG_COLOR)
-screen.blit(loading_surface, (20, 54))
-pygame.display.flip()
+if not USE_SPI_DISPLAY:
+    screen.fill(BG_COLOR)
+    loading_surface = font_large.render("Loading...", True, FG_COLOR)
+    screen.blit(loading_surface, (20, 54))
+    pygame.display.flip()
+else:
+    screen.fill(BG_COLOR)
+    loading_surface = font_large.render("Loading...", True, FG_COLOR)
+    screen.blit(loading_surface, (20, 54))
+    from PIL import Image
+    device.display(Image.frombytes("RGB", DISPLAY_SIZE, pygame.image.tostring(screen, "RGB")))
 
 # Now do the blocking API calls
 current_stock_index = 0
@@ -252,8 +283,12 @@ while running:
 
     # Only redraw if something changed or an event happened
     if updated or event_happened:
-        screen.blit(current_surface, (0, 0))
-        pygame.display.flip()
+        if USE_SPI_DISPLAY:
+            pil_image = Image.frombytes("RGB", DISPLAY_SIZE, pygame.image.tostring(current_surface, "RGB"))
+            device.display(pil_image)
+        else:
+            screen.blit(current_surface, (0, 0))
+            pygame.display.flip()
 
     # Limit FPS
     clock.tick(FPS)
