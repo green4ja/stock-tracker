@@ -211,41 +211,51 @@ def create_stock_surface(symbol, stock_data):
 # Create the initial screen
 current_surface = create_stock_surface(STOCK_SYMBOLS[current_stock_index], stock_data)
 
+# Lower FPS to 5
+FPS = 5
+
 # Main loop
 running = True
 while running:
+    event_happened = False
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
+        event_happened = True
 
     current_time = time.time()
+    updated = False
 
     # Check market status periodically
     if not market_open and current_time - last_market_check_time >= MARKET_CHECK_INTERVAL:
         market_open = is_market_open()
         last_market_check_time = current_time
+        updated = True
 
-    # Update stock data once every 5 seconds
+    # Update stock data only if market is open
     if market_open and current_time - last_update_time >= REFRESH_INTERVAL:
         stock_data = get_stock_data(STOCK_SYMBOLS[current_stock_index])
         current_surface = create_stock_surface(STOCK_SYMBOLS[current_stock_index], stock_data)
         last_update_time = current_time
+        updated = True
 
     # Switch to the next stock every 30 seconds
     if current_time - last_switch_time >= SWITCH_INTERVAL:
         next_index = (current_stock_index + 1) % len(STOCK_SYMBOLS)
-        next_stock_data = get_stock_data(STOCK_SYMBOLS[next_index])
+        next_stock_data = get_stock_data(STOCK_SYMBOLS[next_index]) if market_open else stock_data
         next_surface = create_stock_surface(STOCK_SYMBOLS[next_index], next_stock_data)
         fade_transition(screen, current_surface, next_surface)
         current_stock_index = next_index
         current_surface = next_surface
         last_switch_time = current_time
+        updated = True
 
-    # Draw the current screen
-    screen.blit(current_surface, (0, 0))
-    pygame.display.flip()
+    # Only redraw if something changed or an event happened
+    if updated or event_happened:
+        screen.blit(current_surface, (0, 0))
+        pygame.display.flip()
 
     # Limit FPS
-    clock.tick(30)
+    clock.tick(FPS)
 
 pygame.quit()
