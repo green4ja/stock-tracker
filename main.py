@@ -3,6 +3,7 @@ import requests
 import time
 import os
 import csv
+import platform
 
 # --- API Key Handling ---
 def get_api_key():
@@ -124,7 +125,13 @@ def fade_transition(screen, old_surface, new_surface, duration=1):
 
 # Initialize Pygame
 pygame.init()
-screen = pygame.display.set_mode(DISPLAY_SIZE)
+
+# Detect OS and set display mode
+if platform.system() == "Linux":
+    screen = pygame.display.set_mode(DISPLAY_SIZE, pygame.FULLSCREEN)
+else:
+    screen = pygame.display.set_mode(DISPLAY_SIZE)
+
 pygame.display.set_caption('Stock Tracker')
 clock = pygame.time.Clock()
 
